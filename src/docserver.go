@@ -16,6 +16,10 @@ import (
 	"strings"
 )
 
+type ApplicationConfiguration struct {
+	SYNC_TOKEN string
+}
+
 type DocsPackage struct {
 	// "foo"
 	PackageId string
@@ -35,20 +39,38 @@ func makeStorageLocationWithVersion(packageId string, md5Hash string) string {
 	return "/docserver/_packages/" + packageId + "-" + md5Hash + ".tar.gz"
 }
 
-type test_struct struct {
-	Test string
+/* Encompasses both "SubscriptionConfirmation" and "Notification" structures for the important bits:
+{
+  "Type" : "SubscriptionConfirmation",
+  "MessageId" : "925b1583-7a10-4472-acfc-69503fe059ce",
+  "TopicArn" : "arn:aws:sns:us-east-1:329074924855:DocumentationPackageUpdated",
+  "Message" : "You have chosen to subscribe to the topic arn:aws:sns:us-east-1:329074924855:DocumentationPackageUpdated.\nTo confirm the subscription, visit the SubscribeURL included in this message.",
+  "SubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=ConfirmSubscription&TopicArn=...",
+}
+
+{
+  "Type" : "Notification",
+  "MessageId" : "ccb471e4-8530-5cbe-a52e-20ee18213deb",
+  "TopicArn" : "arn:aws:sns:us-east-1:329074924855:DocumentationPackageUpdated",
+  "Subject" : "Amazon S3 Notification",
+  "Message" : "...",
+}
+*/
+type SnsNotificationStruct struct {
+	Type         string `json:"Type"`
+	Message      string `json:"Message"`
+	Subject      string `json:"Subject"`
+	SubscribeURL string `json:"SubscribeURL"`
 }
 
 // /sync?token=..secret_token..
 func httpSyncEndpoint(rw http.ResponseWriter, req *http.Request) {
 	token := req.URL.Query().Get("token")
 
-	requiredToken := "ef18d56168c3"
-
 	if token == "" {
 		http.Error(rw, "No token given", 400)
 		return
-	} else if token != requiredToken {
+	} else if token != conf.SYNC_TOKEN {
 		http.Error(rw, "Token mismatch", 403)
 		return
 	}
@@ -57,15 +79,34 @@ func httpSyncEndpoint(rw http.ResponseWriter, req *http.Request) {
 	if err != nil {
 		panic(err)
 	}
-	log.Println(string(incomingRawJson))
-	var t test_struct
-	err = json.Unmarshal(incomingRawJson, &t)
+
+	var messageMarshaled SnsNotificationStruct
+	err = json.Unmarshal(incomingRawJson, &messageMarshaled)
 	if err != nil {
-		panic(err)
+		http.Error(rw, "Expecting JSON body", 400)
+		return
 	}
 
-	fmt.Fprintf(rw, "ok thanks")
-	// log.Println(t.Test)
+	if messageMarshaled.Type == "SubscriptionConfirmation" {
+		log.Println("SubscriptionConfirmation", messageMarshaled.Message, messageMarshaled.SubscribeURL)
+
+		fmt.Fprintf(rw, "OK")
+	} else if messageMarshaled.Type == "Notification" {
+		if messageMarshaled.Subject == "Amazon S3 Notification" {
+			log.Println("Received S3 notification", string(incomingRawJson))
+
+			go syncOnce()
+
+			fmt.Fprintf(rw, "OK")
+		} else {
+			log.Println("Unsupported notification subject", string(incomingRawJson))
+
+			http.Error(rw, "Unsupported notification subject", 500)
+		}
+	} else {
+		log.Println("Unsupported message type", string(incomingRawJson))
+		http.Error(rw, "Unsupported message type", 500)
+	}
 }
 
 func startStaticHttpServer() {
@@ -186,14 +227,27 @@ func syncOnce() {
 		if _, err := os.Stat(pkg.StorageLocationWithVersion); os.IsNotExist(err) {
 			log.Println("+ package does not exist", pkg.StorageLocationWithVersion)
 
-			downloadPackage(pkg, *s3Session)
+			go downloadPackage(pkg, *s3Session)
 		} else {
 			log.Println("  package exists", pkg.StorageLocationWithVersion)
 		}
 	}
 }
 
+var conf ApplicationConfiguration
+
+func checkConfig() {
+	SYNC_TOKEN := os.Getenv("SYNC_TOKEN")
+
+	if SYNC_TOKEN == "" {
+		panic("Need SYNC_TOKEN")
+	}
+
+	conf = ApplicationConfiguration{SYNC_TOKEN}
+}
+
 func main() {
+	checkConfig()
 	go syncOnce()
 	startStaticHttpServer()
 }
