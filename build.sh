@@ -2,7 +2,7 @@
 
 #build_inside_docker_image=golang:1.8-alpine
 
-apk add --no-update git
+apk add --no-cache git
 
 cd src/
 
