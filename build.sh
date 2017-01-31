@@ -16,5 +16,3 @@ echo "Compiling"
 
 # compile statically, so this works on Alpine as well
 CGO_ENABLED=0 go build --ldflags '-extldflags "-static"' docserver.go
-
-chmod +x docserver
