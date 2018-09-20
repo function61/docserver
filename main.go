@@ -17,7 +17,7 @@ import (
 )
 
 type ApplicationConfiguration struct {
-	SYNC_TOKEN string
+	syncToken string
 }
 
 type DocsPackage struct {
@@ -68,10 +68,10 @@ func httpSyncEndpoint(rw http.ResponseWriter, req *http.Request) {
 	token := req.URL.Query().Get("token")
 
 	if token == "" {
-		http.Error(rw, "No token given", 400)
+		http.Error(rw, "No token given", http.StatusBadRequest)
 		return
-	} else if token != conf.SYNC_TOKEN {
-		http.Error(rw, "Token mismatch", 403)
+	} else if token != conf.syncToken {
+		http.Error(rw, "Token mismatch", http.StatusForbidden)
 		return
 	}
 
@@ -83,7 +83,7 @@ func httpSyncEndpoint(rw http.ResponseWriter, req *http.Request) {
 	var messageMarshaled SnsNotificationStruct
 	err = json.Unmarshal(incomingRawJson, &messageMarshaled)
 	if err != nil {
-		http.Error(rw, "Expecting JSON body", 400)
+		http.Error(rw, "Expecting JSON body", http.StatusBadRequest)
 		return
 	}
 
@@ -101,11 +101,11 @@ func httpSyncEndpoint(rw http.ResponseWriter, req *http.Request) {
 		} else {
 			log.Println("Unsupported notification subject", string(incomingRawJson))
 
-			http.Error(rw, "Unsupported notification subject", 500)
+			http.Error(rw, "Unsupported notification subject", http.StatusInternalServerError)
 		}
 	} else {
 		log.Println("Unsupported message type", string(incomingRawJson))
-		http.Error(rw, "Unsupported message type", 500)
+		http.Error(rw, "Unsupported message type", http.StatusInternalServerError)
 	}
 }
 
@@ -237,13 +237,15 @@ func syncOnce() {
 var conf ApplicationConfiguration
 
 func checkConfig() {
-	SYNC_TOKEN := os.Getenv("SYNC_TOKEN")
+	syncToken := os.Getenv("SYNC_TOKEN")
 
-	if SYNC_TOKEN == "" {
+	if syncToken == "" {
 		panic("Need SYNC_TOKEN")
 	}
 
-	conf = ApplicationConfiguration{SYNC_TOKEN}
+	conf = ApplicationConfiguration{
+		syncToken: syncToken,
+	}
 }
 
 func main() {
