@@ -16,6 +16,10 @@ import (
 	"strings"
 )
 
+var (
+	version = "dev" // overridden from build process
+)
+
 type ApplicationConfiguration struct {
 	syncToken string
 }
@@ -249,6 +253,8 @@ func checkConfig() {
 }
 
 func main() {
+	log.Printf("docserver %s starting", version)
+
 	checkConfig()
 	go syncOnce()
 	startStaticHttpServer()
