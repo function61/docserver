@@ -6,6 +6,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/gorilla/mux"
 	"io"
 	"io/ioutil"
 	"log"
@@ -114,9 +115,19 @@ func httpSyncEndpoint(rw http.ResponseWriter, req *http.Request) {
 }
 
 func startStaticHttpServer() {
-	http.HandleFunc("/sync", httpSyncEndpoint)
-	http.Handle("/", http.FileServer(http.Dir("/docserver")))
-	log.Fatal(http.ListenAndServe(":80", nil))
+	router := mux.NewRouter()
+	router.HandleFunc("/sync", httpSyncEndpoint)
+	router.Handle("/{anything:.+}", http.FileServer(http.Dir("/docserver")))
+	router.HandleFunc("/", func(res http.ResponseWriter, req *http.Request) {
+		http.Redirect(res, req, "https://function61.com/", http.StatusFound)
+	})
+
+	srv := &http.Server{
+		Handler: router,
+		Addr:    ":80",
+	}
+
+	log.Fatal(srv.ListenAndServe())
 }
 
 /*
