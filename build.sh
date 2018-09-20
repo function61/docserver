@@ -1,18 +1,49 @@
-#!/bin/sh -eu
+#!/bin/bash -eu
 
-#build_inside_docker_image=golang:1.8-alpine
+run() {
+	fn="$1"
 
-echo "Installing git"
+	echo "# $fn"
 
-apk add --no-cache git
+	"$fn"
+}
 
-cd src/
+downloadDependencies() {
+	dep ensure
+}
 
-echo "Downloading dependencies (but not installing)"
+checkFormatting() {
+	# unfortunately we need to list formattable directories because "." would include vendor/
+	local offenders=$(ls *.go | xargs gofmt -l)
 
-go get -d
+	if [ ! -z "$offenders" ]; then
+		>&2 echo "formatting errors: $offenders"
+		exit 1
+	fi
+}
 
-echo "Compiling"
+unitTests() {
+	go test ./...
+}
 
-# compile statically, so this works on Alpine as well
-CGO_ENABLED=0 go build --ldflags '-extldflags "-static"' docserver.go
+staticAnalysis() {
+	go vet ./...
+}
+
+buildLinuxAmd64() {
+	# compile statically so this works on Alpine that doesn't have glibc
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-X main.version=$FRIENDLY_REV_ID -extldflags \"-static\"" -o docserver
+}
+
+rm -rf rel
+mkdir rel
+
+run downloadDependencies
+
+run checkFormatting
+
+run staticAnalysis
+
+run unitTests
+
+run buildLinuxAmd64

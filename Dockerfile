@@ -6,4 +6,4 @@ CMD docserver
 RUN apk add --no-cache ca-certificates \
 	&& mkdir -p /docserver/_packages
 
-ADD src/docserver /bin/docserver
+ADD docserver /usr/local/bin/docserver
